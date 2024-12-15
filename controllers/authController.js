@@ -1,5 +1,6 @@
 const jwt=require('jsonwebtoken');
 const User=require('../db/models/userSchema');
+const Student=require("../db/models/studentSchema")
 
 require('dotenv').config();
 
@@ -30,6 +31,16 @@ const signUp=async (req,res) => {
 
         const user=new User({name,email,password,role});
         await user.save();
+
+        if (role === 'student') {
+            const student = new Student({
+                userId: user._id,
+                contactInfo: {
+                    email: user.email
+                }
+            });
+            await student.save();
+        }  
 
         //generate tokens
         const accessToken=jwt.sign({ _id:user._id, role:user.role },ACCESS_TOKEN_SECRET,{expiresIn:'1h'});
@@ -118,7 +129,7 @@ const logout= async(req,res) =>{
     }
 };
 
-//refresh token controller
+//refresh token controller to generate new access token
 const refreshToken = async (req, res) => {
     const { refreshToken } = req.cookies;
   
@@ -134,7 +145,7 @@ const refreshToken = async (req, res) => {
         return res.status(403).json({ message: 'Invalid refresh token' });
       }
   
-      const accessToken = jwt.sign({ id: user._id, role: user.role }, ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+      const accessToken = jwt.sign({_id: user._id, role: user.role }, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
   
       res.cookie('accessToken', accessToken, COOKIE_OPTIONS);
       res.status(200).json({ message: 'Token refreshed successfully' });

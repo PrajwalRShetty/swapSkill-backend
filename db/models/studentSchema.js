@@ -10,34 +10,38 @@ const studentSchema=new mongoose.Schema({
         type: String,
         required: false  
     },
+    backgroundImage: {  
+        type: String,
+        required: false  
+    },
     headline:{
         type:String,
     },
     education:{
         type:String,
-        required:true
     },
     location:{
         type:String,
     },
-    connections:{
-        type:Number,
-        default:0,
-        required:true
+    connections:[
+        {
+            type:mongoose.Schema.Types.ObjectId,
+            ref:"User"
+        }  
+    ],
+    connectionCount: { 
+        type: Number, default: 0 
     },
     skills: [
         {
             skillName:{          
                 type: String,
-                required: true
             },
             learningPath:{
                 type: [String],    
-                required: true
             },
             resources: {
                 type: [String],    
-                required: true
             },
         
         }
@@ -46,19 +50,15 @@ const studentSchema=new mongoose.Schema({
         {
             title: {        
                 type: String,
-                required: true
             },
             description: {    
                 type: String,
-                required: true
             },
             skills_involved: {  
                 type: [String],    
-                required: true
             },
             github_link: {    
                 type: String,
-                required: true
             }
         }
     ],
@@ -73,6 +73,10 @@ const studentSchema=new mongoose.Schema({
         }
     ],
     contactInfo: {  
+        email: {
+        type: String,
+        required: true,
+        },
         phoneNo: {      
         type: String,
         required: false
