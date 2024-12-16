@@ -177,7 +177,44 @@ const updateProfile = async (req, res) => {
     res.status(500).json({ error: 'Error fetching profile' });
   }
 };
+
+//add new Skill
+const addSkill = async (req, res) => {
+  try {
+    const studentId = req.user._id; 
+    const { skillName, learningPath, resources } = req.body;
+
+    // Validate required fields
+    if (!skillName || !learningPath || !resources) {
+      return res.status(400).send("Skill name, learning path, and resources are required");
+    }
+
+    // Find the student profile
+    const student = await Student.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).send("Student profile not found");
+    }
+
+    const newSkill = {
+      skillName,
+      learningPath,
+      resources,
+    };
+
+    student.skills.push(newSkill);
+    await student.save();
+
+    res.status(201).send({
+      message: "Skill added successfully",
+      skill: newSkill,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error adding skill");
+  }
+};
+
   
 
-  module.exports={updateProfile,searchStudents,getStudentProfile};
+module.exports={updateProfile,searchStudents,getStudentProfile,addSkill};
   

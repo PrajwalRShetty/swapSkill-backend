@@ -3,7 +3,9 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const authRouter=require('./routers/authRouter');
 const studentProfile=require("./routers/studentProfile");
-connectionRouter=require('./routers/connectionRouter');
+const connectionRouter=require('./routers/connectionRouter');
+const projectSponsorProfile=require('./routers/projectSponsorProfile');
+
 
 const app = express();
 
@@ -22,9 +24,12 @@ app.use(cookieParser());
 app.get('/', (req,res) => {res.status(200).send('OM NAMAH SHIVAYA')});
 
 // example to use routers
- app.use('/v1/api', authRouter);
- app.use('/v1/api',studentProfile);
+ app.use('/v1/api/auth', authRouter);
+ app.use('/v1/api/student',studentProfile);
  app.use('/v1/api/connection',connectionRouter);
+ app.use('/v1/api/sponsor',projectSponsorProfile);
+ app.use('/v1/api/projects',projectSponsorProfile);
+
 
 
 app.listen(port,() => console.log(`server is running at port:${port}`));

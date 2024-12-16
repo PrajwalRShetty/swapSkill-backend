@@ -8,7 +8,6 @@ const projectSponsorSchema = new mongoose.Schema({
   },
   bio: {
     type: String,
-    required: true
   },
   profileLogo: {
     type: String,  
@@ -18,18 +17,22 @@ const projectSponsorSchema = new mongoose.Schema({
     type:String,
   },
   contactInfo: {
-    type: String,
-    required: false
+    email: {
+      type: String,
+      required: true,
+    },
+    phoneNo: {      
+      type: String,
+      required: false
+    },
   },
   projects: [
     {
       title: {
         type: String,
-        required: true
       },
       description: {
         type: String,
-        required: true
       },
       skillsRequired: {
         type: [String], 
@@ -41,15 +44,12 @@ const projectSponsorSchema = new mongoose.Schema({
       },
       startDate: {
         type: Date,
-        required: true
       },
       endDate: {
         type: Date,
-        required: true
       },
       applicationDeadline: {
         type: Date,
-        required: true
       },
       enrolledStudents: [{
         type: mongoose.Schema.Types.ObjectId,

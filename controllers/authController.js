@@ -1,6 +1,7 @@
 const jwt=require('jsonwebtoken');
 const User=require('../db/models/userSchema');
-const Student=require("../db/models/studentSchema")
+const Student=require("../db/models/studentSchema");
+const ProjectSponsor=require("../db/models/projectSponserSchema");
 
 require('dotenv').config();
 
@@ -24,7 +25,7 @@ const signUp=async (req,res) => {
             return res.status(400).json({ message: 'All fields are required' });
           }
 
-        const existingUser=await User.findOne({email});
+        const existingUser=await User.findOne({email,role});
         if(existingUser){
             return res.status(409).json({message:'User already exists'});
         }
@@ -40,6 +41,16 @@ const signUp=async (req,res) => {
                 }
             });
             await student.save();
+        }  
+
+        if (role === 'projectSponsor') {
+            const sponsor = new ProjectSponsor({
+                userId: user._id,
+                contactInfo: {
+                    email: user.email
+                }
+            });
+            await sponsor.save();
         }  
 
         //generate tokens
