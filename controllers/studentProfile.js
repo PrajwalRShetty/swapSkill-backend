@@ -84,6 +84,7 @@ const updateProfile = async (req, res) => {
   //searchStudent controller
   const searchStudents = async (req, res) => {
     const { name, skills } = req.query;
+    console.log('Authenticated user:', req.user);
     const authenticatedUserId = req.user._id;
   
     try {
@@ -132,8 +133,8 @@ const updateProfile = async (req, res) => {
             skillName: skill.skillName, 
           }));
         });
-  
       res.status(200).json(students);
+     
     } catch (err) {
       console.error('Error fetching students:', err);
       res.status(500).json({ error: 'Error fetching students' });
@@ -144,9 +145,6 @@ const updateProfile = async (req, res) => {
   const getStudentProfile = async (req, res) => {
   const { studentId } = req.params;
   const userId = req.user._id;
-  console.log(studentId);
-  
-
 
   try {
     const targetStudent = await Student.findOne({userId:studentId});
@@ -214,7 +212,17 @@ const addSkill = async (req, res) => {
   }
 };
 
+ // Get all unique skillNames from the `skills` array in Student collection
+const getSkills = async (req, res) => {
+  try {
+    const skillNames = await Student.distinct('skills.skillName');
+    res.status(200).json(skillNames);  
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error fetching skills' });
+  }
+};
   
 
-module.exports={updateProfile,searchStudents,getStudentProfile,addSkill};
+module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,getSkills};
   

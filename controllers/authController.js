@@ -13,6 +13,7 @@ const COOKIE_OPTIONS = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.COOKIE_SAME_SITE || 'Strict', 
+    path: "/",
   };
   
 
@@ -102,7 +103,7 @@ const login= async (req,res) =>{
         await user.save();
 
         //set cookies
-        res.cookie('accessToken',accessToken,{...COOKIE_OPTIONS,maxAge:3600000});
+        res.cookie('accessToken',accessToken,{...COOKIE_OPTIONS,maxAge: 60*60 * 1000});
         res.cookie('refreshToken',refreshToken, {...COOKIE_OPTIONS, maxAge: 7 * 24 * 60 * 60 * 1000,});
 
         res.status(200).json({message:"Login successful"});
@@ -143,6 +144,8 @@ const logout= async(req,res) =>{
 //refresh token controller to generate new access token
 const refreshToken = async (req, res) => {
     const { refreshToken } = req.cookies;
+    console.log(refreshToken);
+    
   
     if (!refreshToken) {
       return res.status(401).json({ message: 'No refresh token provided' });
@@ -157,8 +160,9 @@ const refreshToken = async (req, res) => {
       }
   
       const accessToken = jwt.sign({_id: user._id, role: user.role }, ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+      console.log("New access token generated:", accessToken);
   
-      res.cookie('accessToken', accessToken, COOKIE_OPTIONS);
+      res.cookie('accessToken', accessToken,{...COOKIE_OPTIONS,maxAge: 60*60 * 1000});
       res.status(200).json({ message: 'Token refreshed successfully' });
     } catch (err) {
         console.error('Server error:', err.message);

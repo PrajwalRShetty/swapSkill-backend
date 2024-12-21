@@ -1,5 +1,5 @@
 const express=require("express");
-const {updateProfile,searchStudents,getStudentProfile,addSkill}=require("../controllers/studentProfile");
+const {updateProfile,searchStudents,getStudentProfile,addSkill,getSkills}=require("../controllers/studentProfile");
 const {authenticateUser}=require("../middlewares/authenticateUser");
 
 const router=express.Router();
@@ -11,5 +11,7 @@ router.get('/search',authenticateUser,searchStudents);
 router.get('/:studentId/profile',authenticateUser,getStudentProfile);
 
 router.post('/skill',authenticateUser,addSkill);
+
+router.get('/skills', getSkills);
 
 module.exports=router;
