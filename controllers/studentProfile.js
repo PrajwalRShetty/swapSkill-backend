@@ -222,6 +222,8 @@ const getSkills = async (req, res) => {
     res.status(500).json({ error: 'Error fetching skills' });
   }
 };
+
+
   
 
 module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,getSkills};
