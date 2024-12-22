@@ -27,6 +27,7 @@ const signUp=async (req,res) => {
           }
 
         const existingUser=await User.findOne({email,role});
+
         if(existingUser){
             return res.status(409).json({message:'User already exists'});
         }
@@ -65,7 +66,12 @@ const signUp=async (req,res) => {
         res.cookie('accessToken',accessToken,{...COOKIE_OPTIONS,maxAge:24*3600000});
         res.cookie('refreshToken',refreshToken, {...COOKIE_OPTIONS, maxAge: 30 * 24 * 60 * 60 * 1000,});
 
-        res.status(201).json({message:'User registered successfully'});
+        res.status(201).json({message:'User registered successfully', user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+          },});
 
     }catch(err){
         console.error('Server error:', err.message);
@@ -79,7 +85,6 @@ const signUp=async (req,res) => {
 const login= async (req,res) =>{
     try {
         const { email,password,role }=req.body;
-        console.log(req.body);
         
 
         if(!email||!password||!role){
