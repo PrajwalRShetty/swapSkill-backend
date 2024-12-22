@@ -7,8 +7,8 @@ const router=express.Router();
 router.post('/signup',signUp);
 router.post('/login',login);
 router.post('/logout',logout);
-router.post('/refresh-token',refreshToken);
+router.post('/refresh-token',authenticateUser,refreshToken);
 
-router.get("/user-info", authenticateUser, (req, res) => {res.json({ user: req.user });});
+router.get("/user-info", (req, res) => {res.json({ user: req.user });});
 
 module.exports=router;

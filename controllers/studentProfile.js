@@ -7,6 +7,8 @@ const updateProfile = async (req, res) => {
     try {
       const authenticatedUserId = req.user._id; 
       const { section, data } = req.body;
+      console.log("Request body:", req.body);
+
   
       const user = await User.findById(authenticatedUserId);  
       const profile = await Student.findOne({ userId: authenticatedUserId });
@@ -70,9 +72,10 @@ const updateProfile = async (req, res) => {
       }
   
       await user.save(); 
+
       await profile.save(); 
   
-      return res.status(200).send({ profile });
+      return res.status(200).send({ profile,user});
   
     } catch (error) {
       console.error(error);
@@ -187,6 +190,9 @@ const addSkill = async (req, res) => {
       return res.status(400).send("Skill name, learning path, and resources are required");
     }
 
+    // Ensure learningPath is stored as an array
+    const processedLearningPath = learningPath.split(',').map(path => path.trim());
+
     // Find the student profile
     const student = await Student.findOne({ userId: studentId });
     if (!student) {
@@ -195,7 +201,7 @@ const addSkill = async (req, res) => {
 
     const newSkill = {
       skillName,
-      learningPath,
+      learningPath: processedLearningPath,
       resources,
     };
 
@@ -212,6 +218,7 @@ const addSkill = async (req, res) => {
   }
 };
 
+
  // Get all unique skillNames from the `skills` array in Student collection
 const getSkills = async (req, res) => {
   try {
@@ -223,8 +230,91 @@ const getSkills = async (req, res) => {
   }
 };
 
+const getUserProfile = async (req, res) => {
+  try {
+    const userId = req.user._id; 
+
+    // Find the user and their associated student profile
+    const user = await User.findById(userId);
+    const profile = await Student.findOne({ userId });
+
+    if (!user || !profile) {
+      return res.status(404).json({ error: 'User or profile not found' });
+    }
+
+    let learningPath = [];
+    if (profile.learningPath && Array.isArray(profile.learningPath) && profile.learningPath.length > 0) {
+      learningPath = profile.learningPath[0].split(',').map(resource => resource.trim());
+    }
+    // Construct the profile response
+    const fullProfile = {
+      name: user.name,
+      email: user.email,
+      profileLogo: profile.profileLogo,
+      headline: profile.headline,
+      location: profile.location,
+      education: profile.education,
+      skills: profile.skills,
+      projects: profile.projects,
+      backgroundImage: profile.backgroundImage,
+      interests: profile.interests,
+      contactInfo: profile.contactInfo,
+    };
+
+    res.status(200).json({ profile: fullProfile });
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    res.status(500).json({ error: 'Error fetching profile' });
+  }
+};
+
+const addProject = async (req, res) => {
+  try {
+    const studentId = req.user._id; // Extract user ID from authenticated request
+    const { title, description, skills_involved, github_link } = req.body;
+
+    // Validate required fields
+    if (!title || !description || !github_link) {
+      return res
+        .status(400)
+        .json({ error: "Title, description, and GitHub link are required." });
+    }
+    
+    const processedSkills = skills_involved
+      ? skills_involved.split(",").map((skill) => skill.trim())
+      : [];
+
+
+    // Find the student's profile
+    const student = await Student.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).json({ error: "Student profile not found." });
+    }
+
+    // Create a new project object
+    const newProject = {
+      title,
+      description,
+      skills_involved:processedSkills,
+      github_link,
+    };
+
+    // Add the project to the student's profile
+    student.projects.push(newProject);
+    await student.save();
+
+    res.status(201).json({
+      message: "Project added successfully",
+      project: newProject,
+    });
+  } catch (error) {
+    console.error("Error adding project:", error);
+    res.status(500).json({ error: "An error occurred while adding the project." });
+  }
+};
+
 
   
 
-module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,getSkills};
+module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,getSkills,getUserProfile,addProject};
   
