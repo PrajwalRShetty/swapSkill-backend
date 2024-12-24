@@ -5,6 +5,8 @@ const authRouter=require('./routers/authRouter');
 const studentProfile=require("./routers/studentProfile");
 const connectionRouter=require('./routers/connectionRouter');
 const projectSponsorProfile=require('./routers/projectSponsorProfile');
+const path = require("path");
+
 
 
 const app = express();
@@ -17,6 +19,10 @@ require('./db/connect');
 const port = process.env.PORT || 8000;
 app.use(express.json());
 app.use(express.urlencoded({ extended:false })); 
+
+// Serve static files for uploads
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 // app.use(cors({ origin:process.env.PROD_URL,credentials:true }));
 app.use(cors({ origin:process.env.DEV_URL,credentials:true }));
 app.use(cookieParser());

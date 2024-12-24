@@ -7,7 +7,9 @@ const updateProfile = async (req, res) => {
     try {
       const authenticatedUserId = req.user._id; 
       const { section, data } = req.body;
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
       console.log("Request body:", req.body);
+      console.log("Uploaded files:", req.files);
 
   
       const user = await User.findById(authenticatedUserId);  
@@ -17,6 +19,14 @@ const updateProfile = async (req, res) => {
          return res.status(404).send('User or Profile not found');
       }
       
+      if (req.files) {
+        if (req.files.backgroundImage) {
+          profile.backgroundImage = `${baseUrl}/uploads/${req.files.backgroundImage[0].filename}`;
+        }
+        if (req.files.profileLogo) {
+          profile.profileLogo = `${baseUrl}/uploads/${req.files.profileLogo[0].filename}`;
+        }
+      }
   
       // Handle updates based on the section
       switch (section) {
@@ -50,11 +60,19 @@ const updateProfile = async (req, res) => {
           break;
   
         case 'background-image':
-          profile.backgroundImage = data.backgroundImage || profile.backgroundImage;
+          if (req.files.backgroundImage) {
+            profile.backgroundImage = `/uploads/${req.files.backgroundImage[0].filename}`;
+          } else {
+            profile.backgroundImage = data.backgroundImage || profile.backgroundImage;
+          }
           break;
   
         case 'logo':
-          profile.profileLogo = data.logo || profile.profileLogo;
+          if (req.files.profileLogo) {
+            profile.profileLogo = `/uploads/${req.files.profileLogo[0].filename}`;
+          } else {
+            profile.profileLogo = data.logo || profile.profileLogo;
+          }
           break;
   
         case 'interests':
@@ -184,24 +202,27 @@ const addSkill = async (req, res) => {
   try {
     const studentId = req.user._id; 
     const { skillName, learningPath, resources } = req.body;
+    console.log(req.body);
 
     // Validate required fields
     if (!skillName || !learningPath || !resources) {
       return res.status(400).send("Skill name, learning path, and resources are required");
     }
 
-    // Ensure learningPath is stored as an array
-    const processedLearningPath = learningPath.split(',').map(path => path.trim());
-
     // Find the student profile
     const student = await Student.findOne({ userId: studentId });
     if (!student) {
       return res.status(404).send("Student profile not found");
     }
+    
+    const skillExists = student.skills.some(skill => skill.skillName.toLowerCase() === skillName.toLowerCase());
+    if (skillExists) {
+      return res.status(400).send("Skill with this name already exists");
+    }
 
     const newSkill = {
       skillName,
-      learningPath: processedLearningPath,
+      learningPath,
       resources,
     };
 
@@ -215,6 +236,81 @@ const addSkill = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send("Error adding skill");
+  }
+};
+
+const deleteSkill = async (req, res) => {
+  try {
+    const studentId = req.user._id; 
+    const { skillName } = req.body;
+
+    // Validate required field
+    if (!skillName) {
+      return res.status(400).send("Skill name is required");
+    }
+
+    // Find the student profile
+    const student = await Student.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).send("Student profile not found");
+    }
+
+    // Find the skill and remove it
+    const skillIndex = student.skills.findIndex(skill => skill.skillName.toLowerCase() === skillName.toLowerCase());
+    if (skillIndex === -1) {
+      return res.status(404).send("Skill not found");
+    }
+
+    student.skills.splice(skillIndex, 1);
+    await student.save();
+
+    res.status(200).send({
+      message: "Skill deleted successfully",
+      deletedSkillName: skillName,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("An error occurred while deleting the skill");
+  }
+};
+
+const updateSkill = async (req, res) => {
+  try {
+    const studentId = req.user._id; 
+    const { skillName, updatedLearningPath, updatedResources } = req.body;
+    console.log(req.body);
+
+    // Find the student profile
+    const student = await Student.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).send("Student profile not found");
+    }
+
+    // Find the skill
+    const skill = student.skills.find((skill) => skill.skillName.toLowerCase() === skillName.toLowerCase());
+    console.log(skill);
+    
+    if (!skill) {
+      return res.status(404).send("Skill not found");
+    }
+    console.log(updatedLearningPath);
+    // Update skill properties if provided
+    if (updatedLearningPath) {
+      skill.learningPath = updatedLearningPath; 
+    }
+    if (updatedResources) {
+      skill.resources = updatedResources; 
+    }
+
+    await student.save();
+
+    res.status(200).send({
+      message: "Skill updated successfully",
+      updatedSkill: skill,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("An error occurred while updating the skill");
   }
 };
 
@@ -242,10 +338,6 @@ const getUserProfile = async (req, res) => {
       return res.status(404).json({ error: 'User or profile not found' });
     }
 
-    let learningPath = [];
-    if (profile.learningPath && Array.isArray(profile.learningPath) && profile.learningPath.length > 0) {
-      learningPath = profile.learningPath[0].split(',').map(resource => resource.trim());
-    }
     // Construct the profile response
     const fullProfile = {
       name: user.name,
@@ -256,7 +348,7 @@ const getUserProfile = async (req, res) => {
       education: profile.education,
       skills: profile.skills,
       projects: profile.projects,
-      backgroundImage: profile.backgroundImage,
+      backgroundImage: profile.backgroundImage ? `${profile.backgroundImage}?t=${Date.now()}` : null,
       interests: profile.interests,
       contactInfo: profile.contactInfo,
     };
@@ -270,7 +362,7 @@ const getUserProfile = async (req, res) => {
 
 const addProject = async (req, res) => {
   try {
-    const studentId = req.user._id; // Extract user ID from authenticated request
+    const studentId = req.user._id; 
     const { title, description, skills_involved, github_link } = req.body;
 
     // Validate required fields
@@ -316,5 +408,5 @@ const addProject = async (req, res) => {
 
   
 
-module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,getSkills,getUserProfile,addProject};
+module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,addProject};
   
