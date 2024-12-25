@@ -1,5 +1,7 @@
 const express=require("express");
-const {updateProfile,searchStudents,getStudentProfile,addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,addProject}=require("../controllers/studentProfile");
+const {updateProfile,searchStudents,getStudentProfile,
+  addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,
+  addProject,updateProject,deleteProject}=require("../controllers/studentProfile");
 const {authenticateUser}=require("../middlewares/authenticateUser");
 const upload = require("../middlewares/multerConfig"); 
 
@@ -23,7 +25,9 @@ router.post('/skills',authenticateUser,addSkill);
 router.delete("/skills", authenticateUser, deleteSkill);
 router.put("/skills", authenticateUser, updateSkill);
 
-router.post('/add-project',authenticateUser,addProject);
+router.post('/project',authenticateUser,addProject);
+router.put('/project/:id',authenticateUser,updateProject);
+router.delete('/project/:id',authenticateUser,deleteProject);
 
 router.get('/skills', getSkills);
 

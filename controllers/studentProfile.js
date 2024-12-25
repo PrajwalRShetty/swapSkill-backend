@@ -70,6 +70,7 @@ const updateProfile = async (req, res) => {
         case 'logo':
           if (req.files.profileLogo) {
             profile.profileLogo = `/uploads/${req.files.profileLogo[0].filename}`;
+            console.log(profile.profileLogo);
           } else {
             profile.profileLogo = data.logo || profile.profileLogo;
           }
@@ -372,11 +373,6 @@ const addProject = async (req, res) => {
         .json({ error: "Title, description, and GitHub link are required." });
     }
     
-    const processedSkills = skills_involved
-      ? skills_involved.split(",").map((skill) => skill.trim())
-      : [];
-
-
     // Find the student's profile
     const student = await Student.findOne({ userId: studentId });
     if (!student) {
@@ -387,7 +383,7 @@ const addProject = async (req, res) => {
     const newProject = {
       title,
       description,
-      skills_involved:processedSkills,
+      skills_involved,
       github_link,
     };
 
@@ -405,8 +401,58 @@ const addProject = async (req, res) => {
   }
 };
 
+const updateProject = async (req, res) => {
+  try {
+    const studentId = req.user._id;
+    const { _id, title, description, skills_involved, github_link } = req.body;
+
+    if (!title || !description || !github_link) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    const student = await Student.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).json({ error: "Student profile not found." });
+    }
+
+    const projectIndex = student.projects.findIndex((proj) => proj._id.toString() === _id);
+    if (projectIndex === -1) {
+      return res.status(404).json({ error: "Project not found." });
+    }
+
+    student.projects[projectIndex] = { _id, title, description, skills_involved, github_link };
+    await student.save();
+
+    res.status(200).json({ message: "Project updated successfully.", updatedProject: student.projects[projectIndex] });
+  } catch (error) {
+    console.error("Error updating project:", error);
+    res.status(500).json({ error: "An error occurred while updating the project." });
+  }
+};
+
+const deleteProject = async (req, res) => {
+  try {
+    const studentId = req.user._id;
+    const { _id } = req.body;
+
+    const student = await Student.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).json({ error: "Student profile not found." });
+    }
+
+    student.projects = student.projects.filter((proj) => proj._id.toString() !== _id);
+    await student.save();
+
+    res.status(200).json({ message: "Project deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting project:", error);
+    res.status(500).json({ error: "An error occurred while deleting the project." });
+  }
+};
+
+
 
   
 
-module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,addProject};
+module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,addProject,deleteProject,updateProject};
   

@@ -9,6 +9,9 @@ const projectSponsorSchema = new mongoose.Schema({
   bio: {
     type: String,
   },
+  headline: {
+    type: String,
+  },
   profileLogo: {
     type: String,  
     required: false
