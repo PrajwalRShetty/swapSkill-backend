@@ -1,5 +1,5 @@
 const User=require("../db/models/userSchema");
-const ProjectSponsor=require("../db/models/projectSponserSchema");
+const ProjectSponsor=require("../db/models/projectSponsorSchema");
 
 const updateProfile = async (req, res) => {
   try {
@@ -208,7 +208,7 @@ const updateProject = async (req, res) => {
     }
 
     // Update the project fields
-    const updatedProject = {
+        const updatedProject = {
       _id: projectSponsor.projects[projectIndex]._id,
       ...req.body
     };
@@ -352,10 +352,77 @@ const getProjects = async (req, res) => {
     res.status(500).json({ error: 'Error fetching projects' });
   }
 };
+// controllers/sponsorController.js
+const getEnrolledStudents = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const sponsorId = req.user._id;
 
+    const projectSponsor = await ProjectSponsor.findOne({
+      userId: sponsorId,
+      'projects._id': projectId
+    });
 
+    if (!projectSponsor) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
 
+    const project = projectSponsor.projects.id(projectId);
+    
+    // Get enrolled students details
+    const enrolledStudents = await Student.find({
+      _id: { $in: project.enrolledStudents }
+    }).select('name profileLogo headline location skills');
 
-  
-  module.exports = { updateProfile,addProject,deleteProject,updateProject,enrollStudent,selectStudents,getProfile,getProjects};
+    res.status(200).json({
+      students: enrolledStudents,
+      selectedStudents: project.selectedStudents
+    });
+
+  } catch (error) {
+    console.error('Error fetching enrolled students:', error);
+    res.status(500).json({ error: 'Error fetching enrolled students' });
+  }
+};
+
+const selectStudent = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { studentId } = req.body;
+    const sponsorId = req.user._id;
+
+    const projectSponsor = await ProjectSponsor.findOne({
+      userId: sponsorId,
+      'projects._id': projectId
+    });
+
+    if (!projectSponsor) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const project = projectSponsor.projects.id(projectId);
+    
+    // Toggle student selection
+    const studentIndex = project.selectedStudents.indexOf(studentId);
+    if (studentIndex === -1) {
+      project.selectedStudents.push(studentId);
+    } else {
+      project.selectedStudents.splice(studentIndex, 1);
+    }
+
+    await projectSponsor.save();
+
+    res.status(200).json({
+      message: 'Student selection updated successfully',
+      selectedStudents: project.selectedStudents
+    });
+
+  } catch (error) {
+    console.error('Error updating student selection:', error);
+    res.status(500).json({ error: 'Error updating student selection' });
+  }
+};
+
+  module.exports = { updateProfile,addProject,deleteProject,updateProject,enrollStudent,
+    selectStudents,getProfile,getProjects,getEnrolledStudents,selectStudent};
   

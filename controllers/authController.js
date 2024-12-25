@@ -1,7 +1,7 @@
 const jwt=require('jsonwebtoken');
 const User=require('../db/models/userSchema');
 const Student=require("../db/models/studentSchema");
-const ProjectSponsor=require("../db/models/projectSponserSchema");
+const ProjectSponsor=require("../db/models/projectSponsorSchema");
 
 require('dotenv').config();
 

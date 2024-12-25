@@ -1,5 +1,7 @@
 const User=require("../db/models/userSchema");
 const Student=require("../db/models/studentSchema");
+const ProjectSponsor=require('../db/models/projectSponsorSchema.js')
+
 
 //updateProfile Controller
 const updateProfile = async (req, res) => {
@@ -451,8 +453,141 @@ const deleteProject = async (req, res) => {
 };
 
 
+const getAvailableProjects = async (req, res) => {
+  try {
+   
+    const projectSponsors = await ProjectSponsor.find({
+      'projects.status': 'pending',
+      'projects.applicationDeadline': { $gt: new Date() }
+    });
+
+    // Get all projects and flatten them into a single array
+    let allProjects = [];
+    projectSponsors.forEach(sponsor => {
+      const activeProjects = sponsor.projects.filter(project => 
+        project.status === 'pending' && 
+        new Date(project.applicationDeadline) > new Date()
+      );
+
+      const projectsWithSponsorInfo = activeProjects.map(project => ({
+        ...project.toObject(),
+        sponsorName: sponsor.contactInfo.email,
+        sponsorId: sponsor._id
+      }));
+      
+      allProjects = [...allProjects, ...projectsWithSponsorInfo];
+    });
+
+    // Check if student has already applied to any projects
+    const student = await Student.findOne({ userId: req.user._id });
+    const appliedProjectIds = student.appliedProjects.map(app => app.projectId.toString());
+
+    const projectsWithApplicationStatus = allProjects.map(project => ({
+      ...project,
+      hasApplied: appliedProjectIds.includes(project._id.toString())
+    }));
+
+    res.status(200).json({ projects: projectsWithApplicationStatus });
+  } catch (error) {
+    console.error('Error fetching available projects:', error);
+    res.status(500).json({ error: 'Error fetching projects' });
+  }
+};
+
+// Apply for a project
+const applyForProject = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const studentId = req.user._id;
+
+    // Find the student
+    const student = await Student.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    // Check if already applied
+    if (student.appliedProjects.some(app => app.projectId.toString() === projectId)) {
+      return res.status(400).json({ error: 'Already applied to this project' });
+    }
+
+    // Find the project
+    const projectSponsor = await ProjectSponsor.findOne({
+      'projects._id': projectId
+    });
+
+    if (!projectSponsor) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const project = projectSponsor.projects.id(projectId);
+    
+    // Check if project is still accepting applications
+    if (project.status !== 'pending' || new Date(project.applicationDeadline) < new Date()) {
+      return res.status(400).json({ error: 'Project is no longer accepting applications' });
+    }
+
+    // Add application to student's records
+    student.appliedProjects.push({
+      projectId: projectId,
+      status: 'pending'
+    });
+    await student.save();
+
+    // Add student to project's enrolled students
+    project.enrolledStudents.push(student._id);
+    await projectSponsor.save();
+
+    res.status(200).json({ 
+      message: 'Successfully applied to project',
+      application: {
+        projectId,
+        status: 'pending',
+        appliedDate: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error applying to project:', error);
+    res.status(500).json({ error: 'Error applying to project' });
+  }
+};
+
+// Get student's applied projects
+const getAppliedProjects = async (req, res) => {
+  try {
+    const student = await Student.findOne({ userId: req.user._id })
+      .populate({
+        path: 'appliedProjects.projectId',
+        model: 'ProjectSponsor',
+        select: 'projects'
+      });
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const appliedProjects = student.appliedProjects.map(application => ({
+      ...application.toObject(),
+      projectDetails: application.projectId
+    }));
+
+    res.status(200).json({ applications: appliedProjects });
+  } catch (error) {
+    console.error('Error fetching applied projects:', error);
+    res.status(500).json({ error: 'Error fetching applied projects' });
+  }
+};
+
+
+
+
+
 
   
 
-module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,addProject,deleteProject,updateProject};
+module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,addProject,
+  deleteProject,updateProject,getAvailableProjects,
+  applyForProject,
+  getAppliedProjects};
   

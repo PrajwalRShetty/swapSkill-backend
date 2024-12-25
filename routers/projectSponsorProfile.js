@@ -1,5 +1,6 @@
 const express=require("express");
-const {updateProfile,addProject,getProjects,deleteProject,updateProject,enrollStudent,selectStudents,getProfile}=require("../controllers/projectSponsorProfile");
+const {updateProfile,addProject,getProjects,deleteProject,updateProject,
+    enrollStudent,selectStudents,getProfile,getEnrolledStudents,selectStudent}=require("../controllers/projectSponsorProfile");
 const {authenticateUser}=require("../middlewares/authenticateUser");
 const upload = require("../middlewares/multerConfig"); 
 
@@ -22,8 +23,7 @@ router.delete("/projects/:projectId",authenticateUser, deleteProject);
 
 router.get('/profile',authenticateUser,getProfile);
 
-router.post('/:projectId/enroll', authenticateUser, enrollStudent);
-
-router.post("/:projectId/select-students", authenticateUser, selectStudents);
+router.get('/projects/:projectId/enrolled-students', authenticateUser, getEnrolledStudents);
+router.post('/projects/:projectId/select-student', authenticateUser, selectStudent);
 
 module.exports=router;

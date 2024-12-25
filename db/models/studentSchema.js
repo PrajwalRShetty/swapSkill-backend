@@ -88,7 +88,22 @@ const studentSchema=new mongoose.Schema({
         portfolio_link: {  
         type: String,
         }
-    }
+    },
+    appliedProjects: [{
+        projectId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'ProjectSponsor.projects'
+        },
+        status: {
+          type: String,
+          enum: ['pending', 'accepted', 'rejected'],
+          default: 'pending'
+        },
+        appliedDate: {
+          type: Date,
+          default: Date.now
+        }
+      }],
 },{timestamps:true});
 
 module.exports = mongoose.model('Student', studentSchema);

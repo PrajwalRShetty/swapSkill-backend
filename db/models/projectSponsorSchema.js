@@ -71,4 +71,5 @@ const projectSponsorSchema = new mongoose.Schema({
   ],
 },{timestamps:true});
 
-module.exports = mongoose.model('ProjectSponsor', projectSponsorSchema);
+const ProjectSponsor = mongoose.model('ProjectSponsor', projectSponsorSchema);
+module.exports = ProjectSponsor;
