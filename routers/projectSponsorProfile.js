@@ -1,6 +1,6 @@
 const express=require("express");
 const {updateProfile,addProject,getProjects,deleteProject,updateProject,
-    enrollStudent,selectStudents,getProfile,getEnrolledStudents,selectStudent}=require("../controllers/projectSponsorProfile");
+getProfile,getEnrolledStudents,selectStudent,viewStudentProfile}=require("../controllers/projectSponsorProfile");
 const {authenticateUser}=require("../middlewares/authenticateUser");
 const upload = require("../middlewares/multerConfig"); 
 
@@ -25,5 +25,7 @@ router.get('/profile',authenticateUser,getProfile);
 
 router.get('/projects/:projectId/enrolled-students', authenticateUser, getEnrolledStudents);
 router.post('/projects/:projectId/select-student', authenticateUser, selectStudent);
+router.get('/student-profile/:studentId', authenticateUser, viewStudentProfile);
+
 
 module.exports=router;

@@ -1,5 +1,6 @@
 const User=require("../db/models/userSchema");
 const ProjectSponsor=require("../db/models/projectSponsorSchema");
+const Student=require("../db/models/studentSchema");
 
 const updateProfile = async (req, res) => {
   try {
@@ -228,83 +229,6 @@ const updateProject = async (req, res) => {
 };
 
 
-// Enroll Student
-const enrollStudent = async (req, res) => {
-  try {
-    const { projectId } = req.params;
-    const studentId = req.user._id;
-    const userRole = req.user.role; 
-
-    if (userRole !== "student") {
-      return res.status(403).send("Only students can enroll in projects");
-    }
-
-    const projectSponsor = await ProjectSponsor.findOne({ "projects._id": projectId });
-
-    if (!projectSponsor) {
-      return res.status(404).send("Project not found");
-    }
-
-    const project = projectSponsor.projects.id(projectId);
-
-    const currentDate = new Date();
-    if (currentDate > project.applicationDeadline) {
-      return res.status(400).send("Enrollment is closed for this project");
-    }
-
-    // Check if the student is already enrolled
-    if (project.enrolledStudents.includes(studentId)) {
-      return res.status(400).send("Student already enrolled in this project");
-    }
-
-    // Add student to enrolledStudents
-    project.enrolledStudents.push(studentId);
-    await projectSponsor.save();
-
-    res.status(200).send({ message: "Successfully enrolled in the project" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Error enrolling in the project");
-  }
-};
-
-//select Students for projects
-const selectStudents = async (req, res) => {
-  try {
-    const { projectId } = req.params;
-    const { selectedStudentIds } = req.body; 
-    const sponsorId = req.user._id; 
-
-    const projectSponsor = await ProjectSponsor.findOne({ userId: sponsorId, "projects._id": projectId });
-
-    if (!projectSponsor) {
-      return res.status(404).send("Project not found or not owned by this sponsor");
-    }
-
-    const project = projectSponsor.projects.id(projectId);
-
-    const invalidSelections = selectedStudentIds.filter(
-      (id) => !project.enrolledStudents.includes(id)
-    );
-
-    if (invalidSelections.length > 0) {
-      return res.status(400).send({
-        message: "Some selected students are not enrolled in this project",
-        invalidSelections,
-      });
-    }
-
-    // Update the selectedStudents array
-    project.selectedStudents = selectedStudentIds;
-    await projectSponsor.save();
-
-    res.status(200).send({ message: "Students successfully selected", project });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Error selecting students");
-  }
-};
-
 const getProfile = async (req, res) => {
   try {
     const sponsorId = req.user._id; 
@@ -352,12 +276,14 @@ const getProjects = async (req, res) => {
     res.status(500).json({ error: 'Error fetching projects' });
   }
 };
-// controllers/sponsorController.js
+
+
 const getEnrolledStudents = async (req, res) => {
   try {
     const { projectId } = req.params;
     const sponsorId = req.user._id;
 
+    // Find the project sponsor and project
     const projectSponsor = await ProjectSponsor.findOne({
       userId: sponsorId,
       'projects._id': projectId
@@ -369,13 +295,24 @@ const getEnrolledStudents = async (req, res) => {
 
     const project = projectSponsor.projects.id(projectId);
     
-    // Get enrolled students details
+    // Get enrolled students with their user information
     const enrolledStudents = await Student.find({
       _id: { $in: project.enrolledStudents }
-    }).select('name profileLogo headline location skills');
+    }).populate('userId', 'name'); // Populate user information
+
+    const studentsData = enrolledStudents.map(student => ({
+      _id: student._id,
+      userId: student.userId._id,
+      userName: student.userId.name, // Include user's name
+      profileLogo: student.profileLogo,
+      headline: student.headline,
+      skills: student.skills,
+      education: student.education,
+      location: student.location
+    }));
 
     res.status(200).json({
-      students: enrolledStudents,
+      students: studentsData,
       selectedStudents: project.selectedStudents
     });
 
@@ -423,6 +360,65 @@ const selectStudent = async (req, res) => {
   }
 };
 
-  module.exports = { updateProfile,addProject,deleteProject,updateProject,enrollStudent,
-    selectStudents,getProfile,getProjects,getEnrolledStudents,selectStudent};
+const viewStudentProfile = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const sponsorId = req.user._id;
+
+    // Find the student and populate user information
+    const student = await Student.findOne({ userId: studentId })
+      .populate('userId', 'name email');
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const hasEnrolledStudent = await ProjectSponsor.findOne({
+      userId: sponsorId,
+      'projects.enrolledStudents': student._id
+    });
+
+    // If student is enrolled in sponsor's project, return full profile
+    if (hasEnrolledStudent) {
+      const fullProfile = {
+        _id: student._id,
+        userId: student.userId._id,
+        name: student.userId.name,
+        email: student.userId.email,
+        profileLogo: student.profileLogo,
+        headline: student.headline,
+        education: student.education,
+        location: student.location,
+        skills: student.skills,
+        projects: student.projects,
+        interests: student.interests,
+        contactInfo: student.contactInfo
+      };
+      return res.status(200).json(fullProfile);
+    }
+
+    // Otherwise, return limited profile
+    const limitedProfile = {
+      _id: student._id,
+      userId: student.userId._id,
+      name: student.userId.name,
+      profileLogo: student.profileLogo,
+      headline: student.headline,
+      location: student.location,
+      skills: student.skills.map(skill => ({
+        skillName: skill.skillName
+      }))
+    };
+
+    res.status(200).json(limitedProfile);
+
+  } catch (error) {
+    console.error('Error fetching student profile:', error);
+    res.status(500).json({ error: 'Error fetching student profile' });
+  }
+};
+
+
+  module.exports = { updateProfile,addProject,deleteProject,updateProject
+    ,getProfile,getProjects,getEnrolledStudents,selectStudent,viewStudentProfile};
   

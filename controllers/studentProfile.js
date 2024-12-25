@@ -579,15 +579,77 @@ const getAppliedProjects = async (req, res) => {
   }
 };
 
+// In your student controller
+const getStudentProjects = async (req, res) => {
+  try {
+    const studentId = req.user._id; // Authenticated student's ID
+    
+    // Find the student
+    const student = await Student.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
 
+    // Get applied projects
+    const appliedProjects = await ProjectSponsor.find({
+      'projects._id': { $in: student.appliedProjects.map(ap => ap.projectId) }
+    }, {
+      'projects.$': 1,
+      userId: 1
+    }).populate('userId', 'name');
 
+    // Get selected projects
+    const selectedProjects = await ProjectSponsor.find({
+      'projects.selectedStudents': student._id
+    }, {
+      'projects.$': 1,
+      userId: 1
+    }).populate('userId', 'name');
 
+    // Format the response
+    const formattedAppliedProjects = student.appliedProjects.map(application => {
+      const projectSponsor = appliedProjects.find(ps => 
+        ps.projects.some(p => p._id.toString() === application.projectId.toString())
+      );
+      const project = projectSponsor?.projects[0];
+      
+      return {
+        projectId: application.projectId,
+        status: application.status,
+        appliedDate: application.appliedDate,
+        title: project?.title,
+        description: project?.description,
+        sponsorName: projectSponsor?.userId?.name,
+        skillsRequired: project?.skillsRequired,
+        applicationDeadline: project?.applicationDeadline
+      };
+    });
 
+    const formattedSelectedProjects = selectedProjects.map(ps => ({
+      projectId: ps.projects[0]._id,
+      title: ps.projects[0].title,
+      description: ps.projects[0].description,
+      sponsorName: ps.userId.name,
+      skillsRequired: ps.projects[0].skillsRequired,
+      startDate: ps.projects[0].startDate,
+      endDate: ps.projects[0].endDate,
+      status: ps.projects[0].status
+    }));
 
-  
+    res.status(200).json({
+      appliedProjects: formattedAppliedProjects,
+      selectedProjects: formattedSelectedProjects
+    });
+
+  } catch (error) {
+    console.error('Error fetching student projects:', error);
+    res.status(500).json({ error: 'Error fetching projects' });
+  }
+};
+
 
 module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,addProject,
   deleteProject,updateProject,getAvailableProjects,
   applyForProject,
-  getAppliedProjects};
+  getAppliedProjects,getStudentProjects};
   
