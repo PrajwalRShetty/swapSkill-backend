@@ -1,6 +1,8 @@
 const User=require("../db/models/userSchema");
 const Student=require("../db/models/studentSchema");
 const ProjectSponsor=require('../db/models/projectSponsorSchema.js')
+const ConnectionRequest=require('../db/models/connectionRequestSchema.js');
+const { connection } = require("mongoose");
 
 
 //updateProfile Controller
@@ -37,6 +39,7 @@ const updateProfile = async (req, res) => {
           profile.headline = data.headline || profile.headline;
           profile.education = data.education || profile.education;
           profile.location = data.location || profile.location;
+          profile.connectionCount=data.connectionCount||profile.connectionCount;
           break;
   
         case 'skills':
@@ -104,102 +107,246 @@ const updateProfile = async (req, res) => {
     }
   };
 
+  const checkConnection = async (userId1, userId2) => {
+    const student = await Student.findOne({ userId: userId1 });
+    return student.connections.includes(userId2);
+  };
 
-  //searchStudent controller
-  const searchStudents = async (req, res) => {
-    const { name, skills } = req.query;
-    console.log('Authenticated user:', req.user);
-    const authenticatedUserId = req.user._id;
-  
+  const checkProfileAccess = async (req, res) => {
     try {
-      const searchQuery = {};
-
-      searchQuery['userId'] = { $ne: authenticatedUserId };
+      const { studentId } = req.params;
+      const currentUserId = req.user._id;
+      const userRole = req.user.role;
   
-      if (name) {
-        const user = await User.findOne({ name: { $regex: name, $options: 'i' } });
+      if (userRole === 'projectSponsor') {
+        // Check if student is connected or enrolled in sponsor's project
+        const isConnected = await checkConnection(currentUserId, studentId);
+        const isEnrolled = await checkStudentEnrollment(studentId, currentUserId);
         
-        if (user) {
-          searchQuery['userId'] = user._id;
-        } else {
-          return res.status(200).json([]);
-        }
+        return res.json({ 
+          canAccess: isConnected || isEnrolled
+        });
       }
   
+      // For other roles, check only connection status
+      const isConnected = await checkConnection(currentUserId, studentId);
+      return res.json({ 
+        canAccess: isConnected 
+      });
+  
+    } catch (error) {
+      console.error('Error checking profile access:', error);
+      res.status(500).json({ error: 'Error checking profile access' });
+    }
+  };
+  
+  const checkStudentEnrollment = async (studentId, sponsorId) => {
+    const enrollment = await ProjectEnrollment.findOne({
+      studentId,
+      'project.sponsorId': sponsorId,
+      status: 'enrolled'
+    });
+    return !!enrollment;
+  };
+
+
+  const searchStudents = async (req, res) => {
+    try {
+      const { name, skills } = req.query;
+      const currentUserId = req.user._id;
+      const userRole = req.user.role; 
+
+      const searchQuery = {
+        userId: { $ne: currentUserId } 
+      };
+  
+      // Handle name search
+      if (name) {
+        const user = await User.findOne({ 
+          name: { $regex: name, $options: 'i' } 
+        });
+        
+        if (!user) {
+          return res.status(200).json([]); 
+        }
+        searchQuery['userId'] = user._id;
+      }
+  
+      // Handle skills search
       if (skills) {
         let skillList = [];
         try {
-          skillList = JSON.parse(skills); 
+          skillList = JSON.parse(skills);
           if (!Array.isArray(skillList)) {
-            throw new Error('Invalid skills format');
+            return res.status(400).json({ error: 'Skills must be an array' });
           }
+  
+          // Clean and escape skill strings
+          skillList = skillList.map(skill => 
+            skill.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          );
+  
+          searchQuery['skills.skillName'] = { 
+            $in: skillList.map(skill => new RegExp(`^${skill}$`, 'i')) 
+          };
         } catch (error) {
-          return res.status(400).json({ error: 'Invalid skills parameter' });
+          return res.status(400).json({ error: 'Invalid skills format' });
         }
-
-        skillList = skillList.map(skill => skill.trim());
-
-        const escapedSkills = skillList.map(skill => {
-          return skill.replace(/[.*+?^=!:${}()|\[\]\/\\]/g, "\\$&");
-        });  
-
-        searchQuery['skills.skillName'] = { $in: escapedSkills.map(skill => new RegExp(skill, 'i')) };
       }
   
-  
+      // Fetch base student results
       const students = await Student.find(searchQuery)
-        .populate('userId', 'name') 
-        .select('_id name profileLogo headline location skills')
+        .populate('userId', 'name')
+        .select('_id userId profileLogo headline location skills')
         .limit(10);
-
-        students.forEach(student => {
-          student.skills = student.skills.map(skill => ({
-            skillName: skill.skillName, 
-          }));
+  
+      // For project sponsors, return basic student info
+      if (userRole === 'projectSponsor') {
+        const formattedStudents = students.map(student => ({
+          ...student.toObject(),
+          skills: student.skills.map(skill => ({
+            skillName: skill.skillName
+          }))
+        }));
+        return res.status(200).json(formattedStudents);
+      }
+  
+      // For students, add connection status
+      const currentStudent = await Student.findOne({ userId: currentUserId });
+      if (!currentStudent) {
+        return res.status(404).json({ error: 'Current student not found' });
+      }
+  
+      // Add connection status for each student
+      const studentsWithStatus = await Promise.all(students.map(async (student) => {
+        // Check if already connected
+        const isConnected = currentStudent.connections.includes(student.userId._id);
+  
+        // Check for pending requests
+        const pendingRequest = await ConnectionRequest.findOne({
+          $or: [
+            { senderId: currentUserId, receiverId: student.userId._id },
+            { senderId: student.userId._id, receiverId: currentUserId }
+          ],
+          status: 'pending'
         });
-      res.status(200).json(students);
-     
-    } catch (err) {
-      console.error('Error fetching students:', err);
-      res.status(500).json({ error: 'Error fetching students' });
+  
+        // Format student object with connection status
+        return {
+          ...student.toObject(),
+          skills: student.skills.map(skill => ({
+            skillName: skill.skillName
+          })),
+          connectionStatus: isConnected ? 'connected' : (pendingRequest ? 'pending' : 'none')
+        };
+      }));
+  
+      res.status(200).json(studentsWithStatus);
+  
+    } catch (error) {
+      console.error('Error in searchStudents:', error);
+      res.status(500).json({ 
+        error: 'Internal server error while searching students',
+        message: error.message 
+      });
     }
   };
 
-  // Fetch profile with connection check
   const getStudentProfile = async (req, res) => {
-  const { studentId } = req.params;
-  const userId = req.user._id;
-
-  try {
-    const targetStudent = await Student.findOne({userId:studentId});
-    if (!targetStudent) {
-      return res.status(404).json({ error: 'Student not found' });
-    }
-
-    const isConnected = targetStudent.connections.includes(userId);
-
-    if (isConnected) {
-      res.status(200).json(targetStudent); // Return full profile
-    } else {
-      // Return basic info
-      const basicInfo = {
+    try {
+      const { studentId } = req.params; 
+      const currentUserId = req.user._id;
+      const userRole = req.user.role; 
+  
+      const targetStudent = await Student.findOne({ userId: studentId })
+        .populate('userId', 'name email');
+      
+      if (!targetStudent) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+  
+      const profileResponse = {
         _id: targetStudent._id,
-        name: targetStudent.name,
+        userId: targetStudent.userId._id,
+        name: targetStudent.userId.name,
         profileLogo: targetStudent.profileLogo,
         headline: targetStudent.headline,
         location: targetStudent.location,
         connectionCount: targetStudent.connectionCount,
+        // Include all skill information
         skills: targetStudent.skills.map(skill => ({
           skillName: skill.skillName,
-        })),
+          learningPath: skill.learningPath,
+          resources: skill.resources
+        }))
       };
-      res.status(200).json(basicInfo);
-    }
-  } catch (err) {
-    res.status(500).json({ error: 'Error fetching profile' });
-  }
-};
 
+  
+      // If user is a project sponsor, provide full access
+      if (userRole === 'projectSponsor') {
+        profileResponse.education = targetStudent.education;
+        profileResponse.projects = targetStudent.projects;
+        profileResponse.interests = targetStudent.interests;
+        profileResponse.contactInfo = {
+          email: targetStudent.userId.email,
+          phoneNo: targetStudent.contactInfo.phoneNo,
+          portfolio_link: targetStudent.contactInfo.portfolio_link
+        };
+        profileResponse.connectionStatus = 'sponsor';
+        profileResponse.isConnected = true;
+      } 
+      // If user is a student, check connection status
+      else if (userRole === 'student') {
+        // Find the current student to check connection status
+        const currentStudent = await Student.findOne({ userId: currentUserId });
+        if (!currentStudent) {
+          return res.status(404).json({ error: 'Current student not found' });
+        }
+  
+        // Check if they are connected
+        const isConnected = currentStudent.connections.includes(studentId);
+  
+        // Check if there's a pending connection request
+        const pendingRequest = await ConnectionRequest.findOne({
+          $or: [
+            { senderId: currentUserId, receiverId: studentId },
+            { senderId: studentId, receiverId: currentUserId }
+          ],
+          status: 'pending'
+        });
+  
+        // Determine connection status
+        let connectionStatus = 'none';
+        if (isConnected) {
+          connectionStatus = 'connected';
+        } else if (pendingRequest) {
+          connectionStatus = 'pending';
+        }
+  
+        profileResponse.connectionStatus = connectionStatus;
+        profileResponse.isConnected = isConnected;
+  
+        // If connected, add additional information
+        if (isConnected) {
+          profileResponse.education = targetStudent.education;
+          profileResponse.projects = targetStudent.projects;
+          profileResponse.interests = targetStudent.interests;
+          profileResponse.contactInfo = {
+            email: targetStudent.userId.email,
+            phoneNo: targetStudent.contactInfo.phoneNo,
+            portfolio_link: targetStudent.contactInfo.portfolio_link
+          };
+        }
+      }
+  
+      res.status(200).json(profileResponse);
+  
+    } catch (error) {
+      console.error('Error fetching student profile:', error);
+      res.status(500).json({ error: 'Error fetching student profile' });
+    }
+  };
+  
 //add new Skill
 const addSkill = async (req, res) => {
   try {
@@ -349,6 +496,7 @@ const getUserProfile = async (req, res) => {
       headline: profile.headline,
       location: profile.location,
       education: profile.education,
+      connectionCount:profile.connectionCount,
       skills: profile.skills,
       projects: profile.projects,
       backgroundImage: profile.backgroundImage ? `${profile.backgroundImage}?t=${Date.now()}` : null,
@@ -647,9 +795,251 @@ const getStudentProjects = async (req, res) => {
   }
 };
 
+// In your student controller
+
+const sendConnectionRequest = async (req, res) => {
+  try {
+    const senderId = req.user._id;
+    const { receiverId } = req.body;
+
+    // Check if request already exists
+    const existingRequest = await ConnectionRequest.findOne({
+      senderId,
+      receiverId,
+      status: { $in: ['pending', 'accepted'] }
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({ 
+        error: 'Connection request already exists or users are already connected' 
+      });
+    }
+
+    // Create new connection request
+    const connectionRequest = new ConnectionRequest({
+      senderId,
+      receiverId
+    });
+
+    await connectionRequest.save();
+
+    res.status(200).json({ 
+      message: 'Connection request sent successfully',
+      request: connectionRequest 
+    });
+
+  } catch (error) {
+    console.error('Error sending connection request:', error);
+    res.status(500).json({ error: 'Error sending connection request' });
+  }
+};
+
+const getConnectionRequests = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Get pending requests received by the user
+    const receivedRequests = await ConnectionRequest.find({
+      receiverId: userId,
+      status: 'pending'
+    }).populate('senderId', 'name');
+
+    // Get pending requests sent by the user
+    const sentRequests = await ConnectionRequest.find({
+      senderId: userId,
+      status: 'pending'
+    }).populate('receiverId', 'name');
+
+    res.status(200).json({
+      received: receivedRequests,
+      sent: sentRequests
+    });
+
+  } catch (error) {
+    console.error('Error fetching connection requests:', error);
+    res.status(500).json({ error: 'Error fetching connection requests' });
+  }
+};
+
+const handleConnectionRequest = async (req, res) => {
+  try {
+    const { requestId, action } = req.body;
+    const userId = req.user._id;
+      
+    if (requestId === userId) {
+      return res.status(400).json({ error: 'You cannot connect with yourself' });
+    }
+
+    const request = await ConnectionRequest.findById(requestId);
+    if (!request || request.receiverId.toString() !== userId.toString()) {
+      return res.status(404).json({ error: 'Connection request not found' });
+    }
+
+    if (action === 'accept') {
+      // Update request status
+      request.status = 'accepted';
+      await request.save();
+
+      // Fix the findOneAndUpdate syntax
+      await Student.findOneAndUpdate(
+        { userId: request.senderId },  // Query condition
+        { 
+          $addToSet: { connections: request.receiverId },
+          $inc: { connectionCount: 1 }
+        },
+        { new: true }  // Return updated document
+      );
+
+      await Student.findOneAndUpdate(
+        { userId: request.receiverId },
+        { 
+          $addToSet: { connections: request.senderId },
+          $inc: { connectionCount: 1 }
+        },
+        { new: true }
+      );
+
+    } else if (action === 'reject') {
+      request.status = 'rejected';
+      await request.save();
+    }
+
+    res.status(200).json({ 
+      message: `Connection request ${action}ed successfully`
+    });
+
+  } catch (error) {
+    console.error('Error handling connection request:', error);
+    
+    // Better error handling
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        error: 'Connection already exists' 
+      });
+    }
+    
+    res.status(500).json({ error: 'Error handling connection request' });
+  }
+};
+
+
+
+const getConnectedStudents = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    
+    // Find the current student with their connections
+    const currentStudent = await Student.findOne({ userId: currentUserId })
+                                     .populate('connections');
+    
+    if (!currentStudent) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    // Find all connected students with their user details
+    const connectedStudents = await Student.find({
+      userId: { $in: currentStudent.connections }
+    }).populate({
+      path: 'userId',
+      select: 'name email'
+    });
+
+    // Format the response to include only necessary information
+    const formattedConnections = connectedStudents.map(student => ({
+      _id: student._id,
+      userId: student.userId._id,
+      name: student.userId.name,
+      profileLogo: student.profileLogo || null,
+      headline: student.headline || '',
+      location: student.location || '',
+      skills: student.skills.map(skill => ({
+        skillName: skill.skillName,
+        _id: skill._id
+      }))
+    }));
+
+    res.status(200).json(formattedConnections);
+
+  } catch (error) {
+    console.error('Error fetching connected students:', error);
+    res.status(500).json({ 
+      error: 'Error fetching connected students',
+      message: error.message 
+    });
+  }
+};
+
+const removeConnection = async (req, res) => {
+  try {
+      const currentUserId = req.user._id; // ID of the current user
+      const { studentId } = req.body; // ID of the student to disconnect from
+
+      // Validate if studentId is provided
+      if (!studentId) {
+          return res.status(400).json({ error: 'Student ID is required' });
+      }
+
+      // Find current student
+      const currentStudent = await Student.findOne({ userId: currentUserId });
+      if (!currentStudent) {
+          return res.status(404).json({ error: 'Current student not found' });
+      }
+
+      // Find target student
+      const targetStudent = await Student.findOne({ userId: studentId });
+      if (!targetStudent) {
+          return res.status(404).json({ error: 'Target student not found' });
+      }
+
+      // Remove connection from current student's connections
+      currentStudent.connections = currentStudent.connections.filter(
+          connection => connection.toString() !== studentId.toString()
+      );
+      
+      // Remove connection from target student's connections
+      targetStudent.connections = targetStudent.connections.filter(
+          connection => connection.toString() !== currentUserId.toString()
+      );
+
+      // Decrease connection count for both students
+      currentStudent.connectionCount = (currentStudent.connectionCount || 1) - 1;
+      targetStudent.connectionCount = (targetStudent.connectionCount || 1) - 1;
+
+      // Save both updates
+      await Promise.all([
+          currentStudent.save(),
+          targetStudent.save()
+      ]);
+
+      // Delete any existing connection requests between the users
+      await ConnectionRequest.deleteOne({
+          $or: [
+              { senderId: currentUserId, receiverId: studentId },
+              { senderId: studentId, receiverId: currentUserId }
+          ]
+      });
+
+      res.status(200).json({ 
+          message: 'Connection removed successfully',
+          success: true 
+      });
+
+  } catch (error) {
+      console.error('Error removing connection:', error);
+      res.status(500).json({ 
+          error: 'Error removing connection',
+          message: error.message 
+      });
+  }
+};
+
+
+
+
+
 
 module.exports={updateProfile,searchStudents,getStudentProfile,addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,addProject,
-  deleteProject,updateProject,getAvailableProjects,
-  applyForProject,
-  getAppliedProjects,getStudentProjects};
+  deleteProject,updateProject,getAvailableProjects,sendConnectionRequest,getConnectionRequests,handleConnectionRequest,
+  applyForProject,getConnectedStudents,checkProfileAccess,
+  getAppliedProjects,getStudentProjects,removeConnection};
   

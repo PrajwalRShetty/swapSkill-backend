@@ -1,6 +1,7 @@
 const User=require("../db/models/userSchema");
 const ProjectSponsor=require("../db/models/projectSponsorSchema");
 const Student=require("../db/models/studentSchema");
+const ConnectionRequest=require("../db/models/connectionRequestSchema")
 
 const updateProfile = async (req, res) => {
   try {
@@ -339,7 +340,7 @@ const selectStudent = async (req, res) => {
 
     const project = projectSponsor.projects.id(projectId);
     
-    // Toggle student selection
+  
     const studentIndex = project.selectedStudents.indexOf(studentId);
     if (studentIndex === -1) {
       project.selectedStudents.push(studentId);
@@ -418,7 +419,151 @@ const viewStudentProfile = async (req, res) => {
   }
 };
 
+const sponsorSearchStudents = async (req, res) => {
+  try {
+    const { name, skills } = req.query;
+    const sponsorId = req.user._id;
+
+    const searchQuery = {
+      'userType': 'student' 
+    };
+
+    if (name) {
+      const user = await User.findOne({ 
+        name: { $regex: name, $options: 'i' },
+        userType: 'student'
+      });
+      
+      if (user) {
+        searchQuery['userId'] = user._id;
+      } else {
+        return res.status(200).json([]);
+      }
+    }
+
+    if (skills) {
+      let skillList = [];
+      try {
+        skillList = JSON.parse(skills);
+        if (!Array.isArray(skillList)) {
+          throw new Error('Invalid skills format');
+        }
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid skills parameter' });
+      }
+
+      skillList = skillList.map(skill => skill.trim());
+      searchQuery['skills.skillName'] = { 
+        $in: skillList.map(skill => new RegExp(skill, 'i')) 
+      };
+    }
+
+    // Get students with connection status
+    const students = await Student.find(searchQuery)
+      .populate('userId', 'name')
+      .select('_id userId profileLogo headline location skills');
+
+    // Add connection status to each student
+    const studentsWithStatus = await Promise.all(students.map(async (student) => {
+      const connectionRequest = await ConnectionRequest.findOne({
+        $or: [
+          { sponsorId: sponsorId, studentId: student.userId._id },
+          { studentId: student.userId._id, sponsorId: sponsorId }
+        ]
+      });
+
+      return {
+        ...student.toObject(),
+        connectionStatus: connectionRequest ? connectionRequest.status : 'none'
+      };
+    }));
+
+    res.status(200).json(studentsWithStatus);
+
+  } catch (error) {
+    console.error('Error searching students:', error);
+    res.status(500).json({ 
+      error: 'Error searching students',
+      message: error.message 
+    });
+  }
+};
+
+
+const getSponsorProfile = async (req, res) => {
+  try {
+    const { sponsorId } = req.params;
+
+    const sponsorProfile = await ProjectSponsor.findById(sponsorId)
+      .populate('userId', 'name email');
+
+    if (!sponsorProfile) {
+      console.log('Profile not found for sponsorId:', sponsorId); 
+      return res.status(404).json({ error: 'Sponsor profile not found' });
+    }
+
+    const profileResponse = {
+      _id: sponsorProfile._id,
+      name: sponsorProfile.userId.name,
+      bio: sponsorProfile.bio,
+      profileLogo: sponsorProfile.profileLogo,
+      location: sponsorProfile.location,
+      contactInfo: sponsorProfile.contactInfo,
+      createdAt: sponsorProfile.createdAt,
+      updatedAt: sponsorProfile.updatedAt
+    };
+
+    res.status(200).json(profileResponse);
+
+  } catch (error) {
+    console.error('Error in getProfile:', error);
+    res.status(500).json({ error: 'Server error while fetching sponsor profile' });
+  }
+};
+
+
+// Get sponsor projects
+const getSponsorProjects = async (req, res) => {
+  try {
+    const { sponsorId } = req.params;
+
+    // First verify if the sponsor exists
+    const sponsorProfile = await ProjectSponsor.findById(sponsorId);
+    if (!sponsorProfile) {
+      return res.status(404).json({ error: 'Sponsor not found' });
+    }
+
+    // Get projects for the sponsor
+    const projects = await ProjectSponsor.findOne({ userId: sponsorId })
+      .select('projects')
+      .populate({
+        path: 'projects',
+        select: 'title description skillsRequired budget startDate endDate applicationDeadline status'
+      });
+
+    if (!projects) {
+      return res.status(404).json({ error: 'No projects found' });
+    }
+
+    // Format the response
+    const formattedProjects = projects.projects.map(project => ({
+      _id: project._id,
+      title: project.title,
+      description: project.description,
+      skillsRequired: project.skillsRequired,
+      budget: project.budget,
+      startDate: project.startDate,
+      endDate: project.endDate,
+      applicationDeadline: project.applicationDeadline,
+      status: project.status
+    }));
+
+    res.status(200).json({ projects: formattedProjects });
+  } catch (error) {
+    console.error('Error in getProjects:', error);
+    res.status(500).json({ error: 'Server error while fetching sponsor projects' });
+  }
+};
 
   module.exports = { updateProfile,addProject,deleteProject,updateProject
-    ,getProfile,getProjects,getEnrolledStudents,selectStudent,viewStudentProfile};
-  
+    ,getProfile,getProjects,getEnrolledStudents,selectStudent,viewStudentProfile,sponsorSearchStudents,getSponsorProfile,getSponsorProjects};

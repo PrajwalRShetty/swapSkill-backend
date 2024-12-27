@@ -1,8 +1,9 @@
 const express=require("express");
 const {updateProfile,searchStudents,getStudentProfile,
-  addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,
-  addProject,updateProject,deleteProject,getAppliedProjects,
-  getAvailableProjects,applyForProject,getStudentProjects}=require("../controllers/studentProfile");
+  addSkill,deleteSkill,updateSkill,getSkills,getUserProfile,removeConnection,
+  addProject,updateProject,deleteProject,getAppliedProjects,getConnectedStudents,
+  getAvailableProjects,applyForProject,getStudentProjects,sendConnectionRequest,
+  getConnectionRequests,handleConnectionRequest,checkProfileAccess}=require("../controllers/studentProfile");
 const {authenticateUser}=require("../middlewares/authenticateUser");
 const upload = require("../middlewares/multerConfig"); 
 
@@ -20,7 +21,7 @@ router.put(
 
 router.get('/search',authenticateUser,searchStudents);
 
-router.get('/:studentId/studentprofile',authenticateUser,getStudentProfile);
+router.get('/profile/:studentId',authenticateUser,getStudentProfile);
 
 router.post('/skills',authenticateUser,addSkill);
 router.delete("/skills", authenticateUser, deleteSkill);
@@ -45,6 +46,16 @@ router.post('/apply-project/:projectId', authenticateUser, applyForProject);
 
 // Get student's applied projects
 router.get('/applied-projects', authenticateUser, getAppliedProjects);
+
+// In your routes file
+router.post('/send-connection-request', authenticateUser, sendConnectionRequest);
+router.get('/connection-requests', authenticateUser, getConnectionRequests);
+router.post('/handle-connection-request', authenticateUser, handleConnectionRequest);
+router.get('/connected-students', authenticateUser, getConnectedStudents);
+router.post('/remove-connection', authenticateUser, removeConnection);
+router.get('/check-profile-access/:studentId', authenticateUser, checkProfileAccess);
+
+
 
 
 module.exports=router;
